@@ -1,0 +1,225 @@
+﻿@page "/movies/details"
+@using Microsoft.EntityFrameworkCore
+@using BlazorMoviesProject.Data
+@using Microsoft.AspNetCore.Components.Authorization
+@using BlazorMoviesProject.Components.Shared
+@inject ApplicationDbContext DbContext
+@inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@rendermode InteractiveServer
+
+<PageTitle>Details</PageTitle>
+
+<h1>Details</h1>
+
+<div class="container mt-4">
+    @if (movie is null)
+    {
+        <div class="alert alert-info">Loading movie details...</div>
+    }
+    else
+    {
+        <div class="card mb-4 shadow-sm">
+            <div class="card-body">
+                <h3 class="card-title">@movie.Title (@movie.Year)</h3>
+                <h5 class="text-muted">Average Rating: @movie.Rating / 5</h5>
+
+                @if (!string.IsNullOrEmpty(movie.CoverImagePath))
+                {
+                    <img src="@movie.CoverImagePath" alt="Cover" class="img-fluid rounded mt-3 mb-2" style="max-height: 300px;" />
+                }
+
+                <div class="mt-3">
+                    <a href="@($"/movies/edit?id={movie.Id}")" class="btn btn-outline-primary me-2">Edit</a>
+                    <a href="/movies" class="btn btn-outline-secondary">Back to List</a>
+                </div>
+            </div>
+        </div>
+
+        <AuthorizeView Context="authContext">
+            <Authorized>
+                <div class="card mb-4 shadow-sm">
+                    <div class="card-header bg-light">
+                        <h5 class="mb-0">Add Your Review</h5>
+                    </div>
+                    <div class="card-body">
+                        <EditForm Model="newReview" OnValidSubmit="HandleAddReview">
+                            <DataAnnotationsValidator />
+                            <ValidationSummary />
+
+                            <div class="mb-3">
+                                <label class="form-label">Rating (0–5, step 0.5)</label>
+                                <InputNumber @bind-Value="newReview.Rating" class="form-control" step="0.5" min="0" max="5" />
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Content</label>
+                                <InputTextArea @bind-Value="newReview.Content" class="form-control" />
+                            </div>
+
+                            <button type="submit" class="btn btn-success">Submit Review</button>
+                        </EditForm>
+                    </div>
+                </div>
+            </Authorized>
+            <NotAuthorized>
+                <div class="alert alert-warning">Log in to add a review.</div>
+            </NotAuthorized>
+        </AuthorizeView>
+
+        <h4 class="mt-4">Reviews</h4>
+        @if (reviews.Any())
+        {
+            @foreach (var review in reviews)
+            {
+                <div class="card my-3 shadow-sm">
+                    <div class="card-body">
+                        <h5 class="card-title">Rating: @review.Rating / 5</h5>
+                        <p class="card-text">@review.Content</p>
+
+                        <AuthorizeView Context="authContext2">
+                            <Authorized>
+                                @if (review.UserId == userId)
+                                {
+                                    <div class="d-flex justify-content-end">
+                                        <button class="btn btn-warning me-2" @onclick="() => StartEditing(review)">Edit</button>
+                                        <button class="btn btn-danger" @onclick="() => ShowDeleteConfirmation(review.Id)">Delete</button>
+                                    </div>
+                                }
+                            </Authorized>
+                        </AuthorizeView>
+                    </div>
+                </div>
+            }
+        }
+        else
+        {
+            <div class="alert alert-light border">No reviews yet.</div>
+        }
+    }
+</div>
+
+
+<DeleteConfirmationDialog IsVisible="@showDeleteDialog"
+                          Title="Potwierdź usunięcie"
+                          Message="Czy na pewno chcesz usunąć tę recenzję? Tej operacji nie można cofnąć."
+                          OnConfirm="ConfirmDelete"
+                          OnCancel="CancelDelete" />
+
+@code {
+    private Movie? movie;
+    private List<Review> reviews = new();
+    private Review newReview = new();
+    private string? userId;
+    private bool showDeleteDialog = false;
+    private int reviewToDeleteId;
+
+    [SupplyParameterFromQuery]
+    private int Id { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadMovie();
+        await InitializeNewReview();
+    }
+
+    private async Task LoadMovie()
+    {
+        movie = await DbContext.Movies.Include(m => m.Reviews).FirstOrDefaultAsync(m => m.Id == Id);
+        reviews = movie?.Reviews ?? new List<Review>();
+
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            userId = user.FindFirst(c => c.Type == "sub" || c.Type.Contains("nameidentifier"))?.Value;
+        }
+    }
+
+    private async Task InitializeNewReview()
+    {
+        if (movie != null && userId != null)
+        {
+            newReview = new Review
+            {
+                MovieId = movie.Id,
+                UserId = userId,
+                Rating = 0
+            };
+        }
+        await Task.CompletedTask;
+    }
+
+    private async Task HandleAddReview()
+    {
+        if (userId == null || movie == null) return;
+
+        // Upewnij się, że wszystkie wymagane pola są ustawione
+        newReview.Rating = (float)Math.Round(newReview.Rating * 2, MidpointRounding.AwayFromZero) / 2;
+        newReview.UserId = userId;
+        newReview.MovieId = movie.Id;
+
+        DbContext.Reviews.Add(newReview);
+        await DbContext.SaveChangesAsync();
+
+        await UpdateMovieRating(movie.Id);
+
+        // Utwórz nową pustą recenzję
+        await InitializeNewReview();
+        await LoadMovie();
+    }
+
+    private void StartEditing(Review review)
+    {
+        NavigationManager.NavigateTo($"/reviews/edit?id={review.Id}");
+    }
+
+    private void ShowDeleteConfirmation(int reviewId)
+    {
+        reviewToDeleteId = reviewId;
+        showDeleteDialog = true;
+    }
+
+    private void CancelDelete()
+    {
+        showDeleteDialog = false;
+    }
+
+    private async Task ConfirmDelete()
+    {
+        await DeleteReview(reviewToDeleteId);
+        showDeleteDialog = false;
+    }
+
+    private async Task DeleteReview(int reviewId)
+    {
+        var review = await DbContext.Reviews.FindAsync(reviewId);
+        if (review != null && review.UserId == userId)
+        {
+            DbContext.Reviews.Remove(review);
+            await DbContext.SaveChangesAsync();
+            await UpdateMovieRating(review.MovieId);
+            await LoadMovie();
+        }
+    }
+
+    private async Task UpdateMovieRating(int movieId)
+    {
+        var movieToUpdate = await DbContext.Movies.Include(m => m.Reviews)
+                                                  .FirstOrDefaultAsync(m => m.Id == movieId);
+
+        if (movieToUpdate != null)
+        {
+            if (movieToUpdate.Reviews.Any())
+            {
+                var avg = movieToUpdate.Reviews.Average(r => r.Rating);
+                movieToUpdate.Rating = (float)Math.Round(avg * 2, MidpointRounding.AwayFromZero) / 2;
+            }
+            else
+            {
+                movieToUpdate.Rating = 0;
+            }
+            await DbContext.SaveChangesAsync();
+        }
+    }
+}

@@ -1,0 +1,46 @@
+﻿@using System.Security.Claims
+    @using System.Linq
+@page "/user-info"
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<h3>Informacje o użytkowniku</h3>
+
+<p>IsAuthenticated: @authState?.User.Identity?.IsAuthenticated</p>
+<p>User Name: @authState?.User.Identity?.Name</p>
+<p>Claims:</p>
+<ul>
+    @foreach (var claim in authState?.User.Claims ?? Enumerable.Empty<Claim>())
+    {
+        <li>@claim.Type: @claim.Value</li>
+    }
+</ul>
+
+
+@if (authState is null)
+{
+    <p>Nie udało się pobrać stanu uwierzytelnienia.</p>
+}
+else if (authState.User.Identity?.IsAuthenticated == true)
+{
+    <p>Zalogowany jako: @authState.User.Identity.Name</p>
+}
+else
+{
+    <p>Użytkownik nie jest zalogowany.</p>
+}
+
+<button style="btn btn-primary" @onclick="RefreshAuthenticationState">Odśwież stan uwierzytelnienia</button>
+
+@code {
+    private AuthenticationState? authState;
+
+    protected override async Task OnInitializedAsync()
+    {
+        authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+    }
+
+    private async Task RefreshAuthenticationState()
+    {
+        authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+    }
+}

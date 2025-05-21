@@ -1,0 +1,74 @@
+﻿@page "/movies/delete"
+@using Microsoft.EntityFrameworkCore
+@using BlazorMoviesProject.Data
+@inject ApplicationDbContext DbContext
+@inject NavigationManager NavigationManager
+
+<PageTitle>Delete Movie</PageTitle>
+
+<div class="container mt-5">
+    <div class="card shadow-sm border-danger">
+        <div class="card-header bg-danger text-white">
+            <h4 class="mb-0">Confirm Delete</h4>
+        </div>
+        <div class="card-body">
+            @if (movie is null)
+            {
+                <div class="alert alert-info">
+                    <em>Loading movie details...</em>
+                </div>
+            }
+            else
+            {
+                <div class="alert alert-warning" role="alert">
+                    Are you sure you want to delete the following movie?
+                </div>
+
+                <dl class="row">
+                    <dt class="col-sm-3">Title</dt>
+                    <dd class="col-sm-9">@movie.Title</dd>
+
+                    <dt class="col-sm-3">Year</dt>
+                    <dd class="col-sm-9">@movie.Year</dd>
+
+                    <dt class="col-sm-3">Rating</dt>
+                    <dd class="col-sm-9">@movie.Rating</dd>
+
+                    <dt class="col-sm-3">Cover</dt>
+                    <dd class="col-sm-9">
+                        <img src="@movie.CoverImagePath" alt="Cover" class="img-thumbnail" style="max-height: 150px;" />
+                    </dd>
+                </dl>
+
+                <EditForm method="post" Model="movie" OnValidSubmit="DeleteMovie">
+                    <button type="submit" class="btn btn-danger me-2">Yes, Delete</button>
+                    <a href="/movies" class="btn btn-outline-secondary">Cancel</a>
+                </EditForm>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private Movie? movie;
+
+    [SupplyParameterFromQuery]
+    private int Id { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        movie = await DbContext.Movies.FirstOrDefaultAsync(m => m.Id == Id);
+
+        if (movie is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+    }
+
+    private async Task DeleteMovie()
+    {
+        DbContext.Movies.Remove(movie!);
+        await DbContext.SaveChangesAsync();
+        NavigationManager.NavigateTo("/movies");
+    }
+}
