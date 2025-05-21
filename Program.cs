@@ -27,8 +27,8 @@ builder.Services.AddAuthentication(options =>
     })
     .AddGoogle(options =>
     {
-        options.ClientId = "1027710925282-tdholob4k5ukei04rak3jl736ope55md.apps.googleusercontent.com";
-        options.ClientSecret = "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";
+        options.ClientId = "";
+        options.ClientSecret = "";
     })
     .AddIdentityCookies();
 
